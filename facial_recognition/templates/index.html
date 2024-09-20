@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Recognition Upload</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .upload-section {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            width: 400px;
+            min-height: 200px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+
+        .upload-label {
+            padding: 40px;
+            border: 2px dashed #ccc;
+            border-radius: 10px;
+            cursor: pointer;
+            text-align: center;
+            transition: background-color 0.3s;
+        }
+
+        .upload-label:hover {
+            background-color: #f9f9f9;
+        }
+
+        .result-section {
+            margin-top: 20px;
+        }
+
+        img {
+            max-width: 100px;
+            margin: 5px;
+        }
+
+        .dragover {
+            border-color: #4CAF50;
+        }
+
+        .compare-button, .clean-button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .compare-button:hover, .clean-button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Face Recognition Upload</h1>
+
+    <div class="upload-section">
+        <label class="upload-label" for="imageUpload">Drag and drop images here or click to upload</label>
+        <input type="file" id="imageUpload" name="image" multiple accept="image/*" style="display: none;" onchange="handleFiles(this.files)">
+        <button class="compare-button" id="compareButton" style="display: none;">Compare</button>
+
+        <label class="upload-label" for="videoUpload" style="margin-top: 20px;">Upload a video</label>
+        <input type="file" id="videoUpload" name="video" accept="video/*" onchange="uploadVideo()" style="display: none;">
+    </div>
+
+    <div class="result-section" id="resultSection" style="display: none;">
+        <h2>Detected Faces:</h2>
+        <div id="detectedFaces"></div>
+        <h2>Comparison Results:</h2>
+        <div id="comparisonResults"></div>
+        <button class="clean-button" id="cleanButton" style="display: none;">Clean</button>
+    </div>
+
+    <script>
+        const uploadLabel = document.querySelector('.upload-label');
+        const compareButton = document.getElementById('compareButton');
+        const cleanButton = document.getElementById('cleanButton');
+        let uploadedFiles = [];
+
+        uploadLabel.addEventListener('dragover', function (e) {
+            e.preventDefault();
+            uploadLabel.classList.add('dragover');
+        });
+
+        uploadLabel.addEventListener('dragleave', function (e) {
+            uploadLabel.classList.remove('dragover');
+        });
+
+        uploadLabel.addEventListener('drop', function (e) {
+            e.preventDefault();
+            uploadLabel.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+
+        function handleFiles(files) {
+            uploadedFiles = [...files];
+            if (uploadedFiles.length > 0) {
+                compareButton.style.display = 'block';
+            }
+        }
+
+        function uploadImages() {
+            const formData = new FormData();
+            for (const file of uploadedFiles) {
+                formData.append('image', file);
+            }
+
+            fetch('/upload', {
+                method: 'POST',
+                body: formData,
+            })
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('resultSection').style.display = 'block';
+                    document.getElementById('detectedFaces').innerHTML = '';  // Clear previous results
+                    document.getElementById('comparisonResults').innerHTML = '';  // Clear previous results
+                    cleanButton.style.display = 'block'; // Show the clean button
+
+                    // Append detected faces only once
+                    const faces = data.results[0].detected_faces;
+                    faces.forEach(face => {
+                        const img = document.createElement('img');
+                        img.src = face.path;  // Fixed path usage
+                        document.getElementById('detectedFaces').appendChild(img);
+                    });
+
+                    // Append comparison results
+                    data.results.forEach((result, index) => {
+                        const resultText = result.status === 'match' ? `Match found: ${result.matched_image}` : 'No match found';
+                        const p = document.createElement('p');
+                        p.textContent = `Image ${index + 1}: ${resultText}`;
+                        document.getElementById('comparisonResults').appendChild(p);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+        }
+
+        compareButton.addEventListener('click', uploadImages);
+
+        cleanButton.addEventListener('click', function () {
+            fetch('/clean', {
+                method: 'POST',
+            })
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('detectedFaces').innerHTML = '';
+                    document.getElementById('comparisonResults').innerHTML = '';
+                    cleanButton.style.display = 'none';
+                    compareButton.style.display = 'none';
+                    uploadedFiles = [];
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+        });
+
+        function uploadVideo() {
+            const videoFile = document.getElementById('videoUpload').files[0];
+            if (!videoFile) return;
+
+            const formData = new FormData();
+            formData.append('video', videoFile);
+
+            fetch('/upload_video', {
+                method: 'POST',
+                body: formData,
+            })
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('resultSection').style.display = 'block';
+                    document.getElementById('detectedFaces').innerHTML = '';  // Clear previous results
+                    document.getElementById('comparisonResults').innerHTML = '';  // Clear previous results
+                    cleanButton.style.display = 'block'; // Show the clean button
+
+                    // Append detected faces from video
+                    const faces = data.detected_faces;
+                    faces.forEach(face => {
+                        const img = document.createElement('img');
+                        img.src = face.path;  // Fixed path usage
+                        document.getElementById('detectedFaces').appendChild(img);
+                    });
+
+                    // Append comparison results from video
+                    data.comparison_results.forEach((result, index) => {
+                        const resultText = result.length ? `Match found: ${result.join(', ')}` : 'No match found';
+                        const p = document.createElement('p');
+                        p.textContent = `Frame ${index + 1}: ${resultText}`;
+                        document.getElementById('comparisonResults').appendChild(p);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+        }
+    </script>
+</body>
+
+</html>
+
